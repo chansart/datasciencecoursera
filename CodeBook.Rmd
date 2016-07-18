@@ -1,0 +1,168 @@
+---
+title: "Getting and Cleaning Data Course Project"
+output: html_document
+---
+
+## Objectives
+
+The purpose of this project is to demonstrate your ability to collect, work with, and clean a data set. The goal is to prepare tidy data that can be used for later analysis. You will be graded by your peers on a series of yes/no questions related to the project. You will be required to submit: 1) a tidy data set as described below, 2) a link to a Github repository with your script for performing the analysis, and 3) a code book that describes the variables, the data, and any transformations or work that you performed to clean up the data called CodeBook.md. You should also include a README.md in the repo with your scripts. This repo explains how all of the scripts work and how they are connected.
+
+One of the most exciting areas in all of data science right now is wearable computing - see for example this article . Companies like Fitbit, Nike, and Jawbone Up are racing to develop the most advanced algorithms to attract new users. The data linked to from the course website represent data collected from the accelerometers from the Samsung Galaxy S smartphone. A full description is available at the site where the data was obtained:
+
+<http://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones>
+
+Here are the data for the project:
+
+<https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip>
+
+You should create one R script called run_analysis.R that does the following.
+
+- Merges the training and the test sets to create one data set.
+- Extracts only the measurements on the mean and standard deviation for each measurement.
+- Uses descriptive activity names to name the activities in the data set
+- Appropriately labels the data set with descriptive variable names.
+- From the data set in step 4, creates a second, independent tidy data set with the average of each variable for each activity and each subject.
+
+##Variables
+
+The dataset contains:
+
+- subject identifiers (30 sujects);
+- activity identifiers (6 activities);
+- various measures from an accelerometer and a gyroscope embedded in a mobile phone.
+
+##Files
+
+Various files are available into the ZIP file:
+
+- "features.txt": names of features available in the dataset;
+- "activity_labels.txt": activities' names;
+- "X_train.txt" and "X_test.txt": values for the different features;
+- "Y_train.txt" and "Y_test.txt": values for the "Activity" variable;
+- "subject_train.txt" and "subject_test.txt": values for the "subject" variable.
+
+##1st step: merges the training and the test sets to create one data set
+
+####Libraries
+
+```{r libraries}
+library(dplyr)
+library(reshape2)
+```
+
+####Downloading and unzipping the dataset
+
+```{r download}
+#Downloading the dataset
+if(!file.exists("./data")){dir.create("./data")}
+fileUrl <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+download.file(fileUrl,destfile="./data/Dataset.zip",method="curl")
+
+#Unzipping the dataset
+unzip(zipfile="./data/Dataset.zip",exdir="./data")
+
+#Going through the directory
+path <- file.path("./data" , "UCI HAR Dataset")
+files<-list.files(path, recursive=TRUE)
+files
+```
+
+####Reading interesting files
+We don't use the files contained into the "Inertial Signals" subdirectories.
+
+```{r reading files}
+#Reading train files
+subjectTrain <- read.table(file.path(path, "train", "subject_train.txt"), header=FALSE)
+activityTrain <- read.table(file.path(path, "train", "Y_train.txt"), header=FALSE)
+featureTrain <- read.table(file.path(path, "train", "X_train.txt"), header=FALSE)
+
+#Reading test files
+subjectTest <- read.table(file.path(path, "test", "subject_test.txt"), header=FALSE)
+activityTest <- read.table(file.path(path, "test", "Y_test.txt"), header=FALSE)
+featureTest <- read.table(file.path(path, "test", "X_test.txt"), header=FALSE)
+
+#Reading "names" files
+activityNames <- read.table(file.path(path, "activity_labels.txt"), header=FALSE)
+featureNames <- read.table(file.path(path, "features.txt"), header=FALSE)
+```
+
+####Adding the subject's group
+Before merging the train set and the test set, we add a column indicating the group of the subject: is the subject from the train group, or from the test group ?
+
+```{r group}
+#Adding a column indicating the subject's group (train/test)
+subjectTrain$group <- rep("train", nrow(subjectTrain))
+subjectTest$group <- rep("test", nrow(subjectTest))
+```
+
+####Merging the data by "type"
+First we merge the data vertically and by type, so we combine train activity data with test activity data, subject train data with subject test data, and so on. 
+
+```{r merging by row}
+#Merging data by type (subject, activity, measures)
+subject <- rbind(subjectTrain, subjectTest)
+activity <- rbind(activityTrain, activityTest)
+features <- rbind(featureTrain, featureTest)
+```
+
+####Renaming columns if appropriate
+
+```{r renaming columns}
+#Renaming columns
+subject <- rename(subject, subject=V1)
+names(activity) <- c("activity")
+names(features) <- featureNames$V2
+```
+
+####Combining all tables in one data.frame
+We combine horizontally the *subject* data, the *activity* data and the *features* data.
+
+```{r merging by column}
+#Combining subject table, activity table and features table in one dataset
+data <- cbind(subject, activity, features)
+```
+
+
+#2nd step: extracting measurements on the mean and standard deviation for each measurement
+We use regular expressions to keep only the mean and the standard deviation for each measurement.
+
+```{r mean and std}
+featuresMeanStd <- featureNames$V2[grep("mean\\(\\)|std\\(\\)", featureNames$V2)]
+data <- subset(data, select=c("subject", "activity", as.character(featuresMeanStd)))
+```
+
+#3rd step: using descriptive activity names to name the activities in the data set
+
+```{r descriptive activity names}
+x <- factor(data$activity)
+levels(x) <- list("WALKING"=1,"WALKING_UPSTAIRS"=2,"WALKING_DOWNSTAIRS"=3,"SITTING"=4,"STANDING"=5,"LAYING"=6)
+data$activity <- x
+```
+
+#4th step: appropriately labeling the data set with descriptive variable names
+We use regular expressions and the *gsub* function to transform some feature names and make them more descriptive.
+
+```{r descriptive feature names}
+#^t -> time
+names(data) <- sapply(names(data), function(x) gsub("^t", "time", x)) 
+#Acc -> Accelerometer
+names(data) <- sapply(names(data), function(x) gsub("Acc", "Accelerometer", x))
+#Gyro -> Gyroscope
+names(data) <- sapply(names(data), function(x) gsub("Gyro", "Gyroscope", x))
+#^f -> frequency
+names(data) <- sapply(names(data), function(x) gsub("^f", "frequency", x))
+#Mag -> Magnitude
+names(data) <- sapply(names(data), function(x) gsub("Mag", "Magnitude", x))
+#BodyBody -> Body
+names(data) <- sapply(names(data), function(x) gsub("BodyBody", "Body", x))
+```
+
+#5th step: creating a second, independent tidy data set with the average of each variable for each activity and each subject
+We average each variable for each activity and each subject, and then we output this tidy dataset into an external file.
+```{r average measures}
+tidyData <- aggregate(.~subject+activity, data, mean)
+tidyData <- tidyData[order(tidyData$subject, tidyData$activity),]
+
+#outputing the tidy dataset
+write.table(tidyData, "tidyData.txt", row.name=FALSE)
+```
