@@ -1,0 +1,99 @@
+---
+title: 'Reproducible Research: Project 1'
+output: html_document
+---
+## Reading in the dataset and processing the data
+```{r EPL, echo=TRUE}
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+
+activity <- read.csv("data/activity.csv") %>%
+  mutate(date=ymd(date))
+```
+
+## Histogram of the total number of steps taken each day
+```{r hist1, echo=TRUE}
+activity %>%
+  filter(!is.na(steps)) %>%
+  group_by(date) %>%
+  summarise(total_steps=sum(steps, na.rm=T)) %>%
+  ggplot(aes(x = total_steps)) +
+        geom_histogram(binwidth = 1000) +
+        labs(title = "Daily Steps", x = "Total Steps", y = "Frequency")
+```
+
+## Mean and median number of steps taken each day
+```{r mean and median, echo=TRUE}
+activity %>%
+  group_by(date) %>%
+  summarise(mean=mean(steps, na.rm=T), median=median(steps, na.rm=T))
+```
+
+## Time series plot of the average number of steps taken
+```{r time series plot, echo=TRUE}
+activity %>%
+  group_by(date) %>%
+  summarise(mean=mean(steps, na.rm=T), median=median(steps, na.rm=T)) %>%
+  ggplot(aes(x=date, y=mean)) +
+  geom_line() 
+```
+
+## The 5-minute interval that, on average, contains the maximum number of steps
+```{r best interval, echo=TRUE}
+activity %>%
+  group_by(interval) %>%
+  summarise(mean=mean(steps, na.rm=T)) %>%
+  ggplot(aes(x=interval, y=mean)) +
+  geom_line()
+
+activity %>%
+  group_by(interval) %>%
+  summarise(mean=mean(steps, na.rm=T)) %>%
+  top_n(1, wt=mean)
+```
+
+## Strategy for imputing missing data
+#### How many missing values in each column ?
+```{r total missing values, echo=TRUE}
+table(is.na(activity$steps))
+table(is.na(activity$date))
+table(is.na(activity$interval))
+```
+There are missing values only in the "steps" column.
+
+#### Imputing missing values
+```{r imputing missing values, echo=TRUE}
+#computing steps mean by interval
+activity2 <- activity %>%
+  group_by(interval) %>%
+  mutate(steps=ifelse(is.na(steps), mean(steps, na.rm=T), steps)) %>%
+  ungroup()
+```
+
+#### Histogram of the total number of steps taken each day after missing values are imputed
+```{r histogram with imputed missing values, echo=TRUE}
+#plotting the new dataset
+activity2 %>%
+  filter(!is.na(steps)) %>%
+  group_by(date) %>%
+  summarise(total_steps=sum(steps, na.rm=T)) %>%
+  ungroup() %>%
+  ggplot(aes(x = total_steps)) +
+        geom_histogram(binwidth = 1000) +
+        labs(title = "Daily Steps", x = "Total Steps", y = "Frequency")
+```
+
+## Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+```{r weekdays, echo=TRUE}
+activity2 %>%
+  mutate(weektime=ifelse(weekdays(date) %in% c("Samedi", "Dimanche"), "weekend", "weekday")) %>%
+  group_by(interval, weektime) %>%
+  summarise(mean=mean(steps, na.rm=T)) %>%
+  ungroup() %>%
+  ggplot(aes(x=interval, y=mean, color=weektime)) +
+  geom_line() +
+  facet_grid(weektime~.)
+```
+
