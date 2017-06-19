@@ -1,0 +1,101 @@
+---
+title: "Untitled"
+author: "C. Hansart"
+date: "18 juin 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#Librairies
+library("caret")
+library("rpart")
+
+set.seed(12345)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Introduction to data
+
+First, we load the data. The "eval" dataset counts only 20 samples : it will be used to evaluate the project and is too small to test the models during the development phase. So we split the training dataset in a training set and a test set (70%-30%).   
+```{r loading data}
+training <- read.csv("data/pml-training.csv", sep=",", na.strings=c("NA","#DIV/0!",""))
+eval <- read.csv("data/pml-testing.csv", sep=",", na.strings=c("NA","#DIV/0!",""))
+
+dim(training)
+dim(eval)
+str(training)
+#str(eval)
+
+trainingSamples <- createDataPartition(training$classe, p=0.7, list=FALSE)
+train <- training[trainingSamples, ]
+test <- training[-trainingSamples, ]
+
+dim(train)
+dim(test)
+```
+
+## Cleaning data
+Now that our training and test sets are ready, we identify the predictors for which the variance is near to zero: indeed, these predictors bring no extra informations and can be removed without any information loss. This operation removes 55 useless predictors.
+
+We also remove the five first column ("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp") containing the sample identifier, the subject name and temporal informations.
+
+Finally, we remove the columns containing at least 90 % of NA values. 46 predictors (on the 100 remaining predictors) count at least 90 % NA values.  
+
+```{r removing predictors}
+NZV <- nearZeroVar(train)
+names(train)[NZV]
+
+train <- train[, -NZV]
+test <- test[, -NZV]
+
+#removing identification columns
+train <- train[, -c(1:5)]
+test <- test[, -c(1:5)]
+
+#removing mostly NAs columns
+mostlyNAs <- sapply(train, function(x) mean(is.na(x))) > 0.9
+train <- train[, mostlyNAs == FALSE]
+test <- test[, mostlyNAs == FALSE]
+
+dim(train)
+names(train)
+```
+
+At the end of this cleaning process, the number of considered predictors for this analysis is reduced to 54.
+
+## Prediction models
+In this final project, we build two models based on two of the most widely used prediction models today: classification tree and random forests. 
+
+#### Classification tree
+
+```{r classification tree}
+ctFit <- rpart(classe ~ ., data = train, method = "class")
+
+ctPredict <- predict(ctFit, test, type="class")
+confusionMatrix(ctPredict, test$classe)
+```
+
+#### Random forests
+
+We use a 3-fold (instead of 10-fold) cross validation to reduce a little bit the computation time.
+
+```{r random forests}
+control <- trainControl(method="cv", number=3)
+rfFit <- train(classe ~ ., data = train, method="rf", trControl = control)
+
+rfPredict <- predict(rfFit, test)
+confusionMatrix(rfPredict, test$classe)
+```
+
+## Predictions for the evaluation set
+Our random forest model obtains a much better accuracy (99,64%) than our classification tree (73,68 %). Consequently, we use the random forest to predict the classes for the evaluation set. 
+
+```{r evaluation set}
+rfPredictEval <- predict(rfFit, eval)
+rfPredictEval
+```
